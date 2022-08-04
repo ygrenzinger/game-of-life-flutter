@@ -145,7 +145,7 @@ class GameOfLifeWidget extends StatefulWidget {
 class _GameOfLifeWidgetState extends State<GameOfLifeWidget> {
   Timer? _generating;
   bool _running = false;
-  GameOfLife _gameOfLife = GameOfLife.of(50, random: true);
+  GameOfLife _gameOfLife = GameOfLife.of(30, random: true);
 
   @override
   Widget build(BuildContext context) {
