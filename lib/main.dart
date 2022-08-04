@@ -3,13 +3,9 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
 
-
-enum CellState {
-  ALIVE, DEAD
-}
+enum CellState { ALIVE, DEAD }
 
 extension CellStateExtension on CellState {
-
   CellState nextState(int numberOfAliveNeighbours) {
     if (numberOfAliveNeighbours == 3) {
       return CellState.ALIVE;
@@ -19,7 +15,6 @@ extension CellStateExtension on CellState {
     }
     return CellState.DEAD;
   }
-
 }
 
 class Position {
@@ -34,7 +29,8 @@ class Position {
   }
 
   @override
-  bool operator ==(other) => other is Position && row == other.row && column == other.column;
+  bool operator ==(other) =>
+      other is Position && row == other.row && column == other.column;
 
   @override
   int get hashCode => Object.hash(row, column);
@@ -43,15 +39,20 @@ class Position {
 }
 
 class GameOfLife {
-
   static final List<Position> neighbourShifts = [
-    Position(-1, -1), Position(-1, 0), Position(-1, -1),
-    Position(0, -1), Position(0, -1),
-    Position(1, -1), Position(1, 0), Position(1, -1),
+    Position(-1, -1),
+    Position(-1, 0),
+    Position(-1, 1),
+    Position(0, -1),
+    Position(0, 1),
+    Position(1, -1),
+    Position(1, 0),
+    Position(1, 1),
   ];
 
   final int size;
   final Set<Position> _aliveCells;
+
   GameOfLife(this.size, this._aliveCells);
 
   static GameOfLife of(int size, {bool random = false}) {
@@ -69,9 +70,8 @@ class GameOfLife {
 
     return GameOfLife(size, aliveCells);
   }
-  
-  bool isAlive(Position position) =>
-    _aliveCells.contains(position);
+
+  bool isAlive(Position position) => _aliveCells.contains(position);
 
   CellState cellStateAt(Position position) {
     if (isAlive(position)) {
@@ -92,13 +92,15 @@ class GameOfLife {
   }
 
   bool isInGrid(Position position) =>
-      position.row >= 0 && position.row < size
-        && position.column >= 0 && position.column < size;
+      position.row >= 0 &&
+      position.row < size &&
+      position.column >= 0 &&
+      position.column < size;
 
   GameOfLife nextGeneration() {
     Set<Position> nextCells = {};
-
-    for (var position in _aliveCellsWithNeighbour()) {
+    final posToEvaluate = _aliveCellsWithNeighbour();
+    for (var position in posToEvaluate) {
       final cellState = cellStateAt(position);
       final numberOfAliveNeighbours = _computeAliveNeighbours(position);
       if (cellState.nextState(numberOfAliveNeighbours) == CellState.ALIVE) {
@@ -117,8 +119,8 @@ class GameOfLife {
     block.add(position);
     return block;
   }
-  
-  int _computeAliveNeighbours(Position position)  =>
+
+  int _computeAliveNeighbours(Position position) =>
       _neighboursOf(position).fold(0, (int previousValue, Position position) {
         if (isAlive(position)) {
           return previousValue + 1;
@@ -127,12 +129,10 @@ class GameOfLife {
         }
       });
 
-  List<Position> _neighboursOf(Position position) =>
-      GameOfLife.neighbourShifts
-        .map((Position p) => position + p as Position)
-        .where(isInGrid)
-        .toList();
-
+  List<Position> _neighboursOf(Position position) => GameOfLife.neighbourShifts
+      .map((Position p) => position + p as Position)
+      .where(isInGrid)
+      .toList();
 }
 
 class GameOfLifeWidget extends StatefulWidget {
@@ -143,56 +143,76 @@ class GameOfLifeWidget extends StatefulWidget {
 }
 
 class _GameOfLifeWidgetState extends State<GameOfLifeWidget> {
-  Timer? generating;
+  Timer? _generating;
+  bool _running = false;
   GameOfLife _gameOfLife = GameOfLife.of(50, random: true);
-
-  void startRunning(){
-    generating = Timer.periodic(const Duration(seconds: 1),(_) => startGeneration());
-  }
-
-  void stopRunning(){
-    setState(() => generating?.cancel());
-  }
-
-  void startGeneration(){
-    print("next generation");
-    setState(() {
-      _gameOfLife = _gameOfLife.nextGeneration();
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      startRunning();
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
-    var children = List<int>.generate(_gameOfLife.size, (i) => i).expand((row) => _buildRow(row)).toList();
-    return GridView(
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: _gameOfLife.size,
-        ),
-        children: children
+    var children = List<int>.generate(_gameOfLife.size, (i) => i)
+        .map((row) => _buildRow(row))
+        .toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Sample Code'),
+      ),
+      body: Table(
+        border: TableBorder.all(),
+        defaultColumnWidth: const FixedColumnWidth(20),
+        children: children,
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => setState(() => _swithRunning()),
+        tooltip: _running ? 'start running' : 'stop running',
+        child: Icon(_running ? Icons.stop : Icons.start),
+      ),
     );
   }
 
   void _switchCellState(Position position) {
-    setState(() => {
-      _gameOfLife = _gameOfLife.switchCellState(position)
-    });
+    setState(() => {_gameOfLife = _gameOfLife.switchCellState(position)});
   }
 
   GridCell _buildCell(int row, int column) {
     final position = Position(row, column);
-    return GridCell(position: position, alive: _gameOfLife.isAlive(position), onCellClicked: _switchCellState);
+    return GridCell(
+        position: position,
+        alive: _gameOfLife.isAlive(position),
+        onCellClicked: _switchCellState);
   }
 
-  List<GridCell> _buildRow(int row) {
-    return List<int>.generate(_gameOfLife.size, (i) => i).map((column) => _buildCell(row, column)).toList();
+  TableRow _buildRow(int row) {
+    return TableRow(
+        children: List<int>.generate(_gameOfLife.size, (i) => i)
+            .map((column) => _buildCell(row, column))
+            .toList());
+  }
+
+  void _startRunning() {
+    _running = true;
+    _generating =
+        Timer.periodic(const Duration(seconds: 1), (_) => _startGeneration());
+  }
+
+  void _stopRunning() {
+    _running = false;
+    _generating?.cancel();
+  }
+
+  void _swithRunning() {
+    if (_running) {
+      _stopRunning();
+    } else {
+      _startRunning();
+    }
+  }
+
+  void _startGeneration() {
+    print("next generation");
+    setState(() {
+      _gameOfLife = _gameOfLife.nextGeneration();
+    });
   }
 }
 
@@ -209,38 +229,28 @@ class GridCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    //print('cell position $position alive $alive');
-    return InkWell(
-        child:
-        Center(
-          child: Container(
-            margin: const EdgeInsets.all(1.0),
-            width: 20.0,
-            height: 20.0,
-            decoration: BoxDecoration(
-              color: alive ? Colors.black : Colors.white,
-              border: Border.all(
-                color: Colors.black,
-                width: 1,
-              ),
-            ),
-          ),
+    return GestureDetector(
+      child: SizedBox(
+        height: 20,
+        child: Container(
+          color: alive ? Colors.black : Colors.white,
+        ),
       ),
       onTap: () => onCellClicked(position),
     );
   }
 }
 
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
 
-
-void main() {
-  runApp(
-    const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: GameOfLifeWidget(),
-        ),
-      ),
-    ),
-  );
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      title: 'Game of Life',
+      home: GameOfLifeWidget(),
+    );
+  }
 }
+
+void main() => runApp(const MyApp());
