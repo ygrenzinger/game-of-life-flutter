@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
+
+import 'package:flutter/scheduler.dart';
 
 enum CellState { ALIVE, DEAD }
 
@@ -142,25 +143,49 @@ class GameOfLifeWidget extends StatefulWidget {
   State<GameOfLifeWidget> createState() => _GameOfLifeWidgetState();
 }
 
-class _GameOfLifeWidgetState extends State<GameOfLifeWidget> {
-  Timer? _generating;
+class _GameOfLifeWidgetState extends State<GameOfLifeWidget>
+    with SingleTickerProviderStateMixin {
   bool _running = false;
-  GameOfLife _gameOfLife = GameOfLife.of(30, random: true);
+  late Ticker _ticker;
+  late Duration _lastTime;
+  final StreamController<GameOfLife> _controller = StreamController.broadcast();
+  late GameOfLife _gameOfLife;
+
+  @override
+  void initState() {
+    super.initState();
+    _running = false;
+    _gameOfLife = GameOfLife.of(30, random: true);
+    _controller.stream.listen((event) {
+      _gameOfLife = event;
+    });
+    _ticker = createTicker(update);
+    _lastTime = Duration.zero;
+  }
+
+  void update(Duration elapsed) {
+    if (elapsed.inSeconds - _lastTime.inSeconds >= 1) {
+      _lastTime = elapsed;
+      _startGeneration();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    var children = List<int>.generate(_gameOfLife.size, (i) => i)
-        .map((row) => _buildRow(row))
-        .toList();
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sample Code'),
       ),
-      body: Table(
-        border: TableBorder.all(),
-        defaultColumnWidth: const FixedColumnWidth(20),
-        children: children,
+      body: Grid(
+        defaultGameOfLife: _gameOfLife,
+        riverOfLife: _controller.stream,
+        switchCell: _switchCellState,
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => setState(() => _swithRunning()),
@@ -170,36 +195,22 @@ class _GameOfLifeWidgetState extends State<GameOfLifeWidget> {
     );
   }
 
-  void _switchCellState(Position position) {
-    setState(() => {_gameOfLife = _gameOfLife.switchCellState(position)});
-  }
-
-  GridCell _buildCell(int row, int column) {
-    final position = Position(row, column);
-    return GridCell(
-        position: position,
-        alive: _gameOfLife.isAlive(position),
-        onCellClicked: _switchCellState);
-  }
-
-  TableRow _buildRow(int row) {
-    return TableRow(
-        children: List<int>.generate(_gameOfLife.size, (i) => i)
-            .map((column) => _buildCell(row, column))
-            .toList());
+  void _switchCellState(Position position) async {
+    _controller.add(_gameOfLife.switchCellState(position));
   }
 
   void _startRunning() {
     _running = true;
-    _generating =
-        Timer.periodic(const Duration(seconds: 1), (_) => _startGeneration());
+    _ticker.start();
   }
 
   void _stopRunning() {
     _running = false;
-    _generating?.cancel();
+    _ticker.stop();
+    _lastTime = Duration.zero;
   }
 
+  // ** Your using a state
   void _swithRunning() {
     if (_running) {
       _stopRunning();
@@ -208,21 +219,57 @@ class _GameOfLifeWidgetState extends State<GameOfLifeWidget> {
     }
   }
 
-  void _startGeneration() {
+  void _startGeneration() async {
     print("next generation");
-    setState(() {
-      _gameOfLife = _gameOfLife.nextGeneration();
-    });
+    _controller.add(_gameOfLife.nextGeneration());
+  }
+}
+
+class Grid extends StatelessWidget {
+  final GameOfLife defaultGameOfLife;
+  final Stream<GameOfLife> riverOfLife;
+  final Function(Position) switchCell;
+
+  const Grid(
+      {Key? key,
+      required this.riverOfLife,
+      required this.switchCell,
+      required this.defaultGameOfLife})
+      : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Table(
+        border: TableBorder.all(),
+        defaultColumnWidth: const FixedColumnWidth(20),
+        children: [
+          ...List<int>.generate(defaultGameOfLife.size, (i) => i)
+              .map((row) => TableRow(children: [
+                    ...List<int>.generate(defaultGameOfLife.size, (i) => i)
+                        .map((column) {
+                      final position = Position(row, column);
+                      return GridCell(
+                          riverOfLife: riverOfLife,
+                          position: position,
+                          alive: defaultGameOfLife.isAlive(position),
+                          onCellClicked: switchCell);
+                    }).toList()
+                  ]))
+              .toList()
+        ]);
   }
 }
 
 class GridCell extends StatelessWidget {
-  GridCell({
+  const GridCell({
+    Key? key,
+    required this.riverOfLife,
     required this.position,
     required this.alive,
     required this.onCellClicked,
-  }) : super(key: ObjectKey(position));
+  }) : super(key: key);
 
+  final Stream<GameOfLife> riverOfLife;
   final Position position;
   final bool alive;
   final Function(Position) onCellClicked;
@@ -232,9 +279,20 @@ class GridCell extends StatelessWidget {
     return GestureDetector(
       child: SizedBox(
         height: 20,
-        child: Container(
-          color: alive ? Colors.black : Colors.white,
-        ),
+        child: StreamBuilder<GameOfLife>(
+            stream: riverOfLife,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.active) {
+                return Container(
+                  color: alive ? Colors.black : Colors.white,
+                );
+              }
+              return Container(
+                color: snapshot.data?.isAlive(position) == true
+                    ? Colors.black
+                    : Colors.white,
+              );
+            }),
       ),
       onTap: () => onCellClicked(position),
     );
